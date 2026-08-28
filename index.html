@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>Consulta de Inventario</title>
+  <!-- Ícono de la pestaña. Si subiste icon.png a este mismo repositorio de GitHub, déjalo así.
+       Si usas Google Drive, reemplaza por: https://drive.google.com/uc?export=view&id=TU_ID_AQUI -->
+  <link rel="icon" type="image/png" href="icon.png">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f2f4f7;
+      margin: 0;
+      padding: 16px;
+      color: #1f2d3d;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    h1 { font-size: 20px; color: #1F4E78; margin: 0 0 12px 0; }
+    h2 { font-size: 16px; color: #1F4E78; margin: 0 0 10px 0; }
+    label { font-size: 13px; color: #555; display:block; margin-bottom:4px; }
+    input[type=text], input[type=number] {
+      width: 100%;
+      padding: 12px;
+      font-size: 18px;
+      border: 2px solid #1F4E78;
+      border-radius: 8px;
+      background: #fff8e1;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      font-size: 15px;
+      font-weight: bold;
+      border: none;
+      border-radius: 8px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    .btn-primary { background: #1F4E78; color: #fff; }
+    .btn-secondary { background: #e2e8f0; color: #1F4E78; }
+    .btn-save { background: #2e7d32; color: #fff; }
+    .btn-cancel { background: #eee; color: #c62828; }
+    .btn-toggle { background: #e2e8f0; color: #1F4E78; margin-top:0; flex:1; }
+    .btn-toggle.activo { background: #1F4E78; color: #fff; }
+    #reader { width: 100%; margin-top: 10px; border-radius: 8px; overflow: hidden; }
+    .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+    .row span:first-child { color: #667; }
+    .row span:last-child { font-weight: bold; text-align: right; max-width: 60%; }
+    .estado-OK { color: #2e7d32; }
+    .estado-BAJO { color: #c62828; }
+    .msg { text-align: center; padding: 20px; color: #888; }
+    #estadoCarga { font-size: 13px; color: #888; text-align:center; margin-top:6px; }
+    table { width:100%; border-collapse: collapse; font-size:13px; margin-top:10px; }
+    th, td { border:1px solid #ccc; padding:6px; text-align:left; }
+    th { background:#1F4E78; color:#fff; }
+    .item-card { border: 1px solid #dde3ea; border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+    .item-card .badge { display:inline-block; background:#1F4E78; color:#fff; font-size:12px; padding:3px 10px; border-radius:12px; margin-bottom:8px; }
+    @media print {
+      body * { visibility: hidden; }
+      #impresionCard, #impresionCard * { visibility: visible; }
+      #impresionCard { position:absolute; left:0; top:0; width:100%; }
+      .no-print { display:none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h1>📦 Consulta de Inventario</h1>
+    <label>Escribe el código o escanéalo con un lector de código de barras físico (funciona como teclado):</label>
+    <input type="text" id="codigoInput" placeholder="Ej: SKU-0001" autofocus>
+    <button class="btn-primary" onclick="buscar()">Buscar</button>
+    <button class="btn-secondary" id="btnCamara" onclick="toggleCamara()">📷 Escanear código de barras</button>
+    <div id="reader"></div>
+    <div id="estadoCarga"></div>
+  </div>
+
+  <div class="card">
+    <button class="btn-secondary" onclick="imprimirInventario()">🖨️ Imprimir Inventario</button>
+    <button class="btn-secondary" onclick="toggleFormularioNuevo()">➕ Crear Nuevo Item de Inventario</button>
+  </div>
+
+  <div class="card" id="formularioNuevo" style="display:none;">
+    <h1>➕ Nuevo Producto</h1>
+    <label>Código (SKU) *</label>
+    <input type="text" id="n_codigo" placeholder="Ej: SKU-0004">
+    <label style="margin-top:10px;">Nombre del Producto</label>
+    <input type="text" id="n_nombre" placeholder="Ej: Camisa Polo Verde M">
+    <label style="margin-top:10px;">Categoría</label>
+    <input type="text" id="n_categoria" placeholder="Ej: Camisas">
+    <label style="margin-top:10px;">Descripción</label>
+    <input type="text" id="n_descripcion" placeholder="Ej: Polo 100% algodón">
+    <label style="margin-top:10px;">Cantidad Disponible</label>
+    <input type="number" id="n_cantidad" placeholder="0">
+    <label style="margin-top:10px;">Punto de Reorden</label>
+    <input type="number" id="n_puntoReorden" placeholder="0">
+    <label style="margin-top:10px;">Precio Unitario</label>
+    <input type="number" id="n_precio" placeholder="0.00" step="0.01">
+    <label style="margin-top:10px;">Ubicación</label>
+    <input type="text" id="n_ubicacion" placeholder="Ej: Bodega A - Estante 3">
+    <label style="margin-top:10px;">Proveedor</label>
+    <input type="text" id="n_proveedor" placeholder="Ej: Textiles del Norte">
+    <div style="display:flex; gap:8px;">
+      <button class="btn-save" style="flex:2;" onclick="guardarNuevoItem()">💾 Guardar item nuevo</button>
+      <button class="btn-cancel" style="flex:1;" onclick="limpiarPantalla()">✖ Cancelar</button>
+    </div>
+  </div>
+
+  <div id="resultadosContainer"></div>
+
+  <div class="card msg" id="noEncontrado" style="display:none;">
+    ⚠ Código no encontrado en el inventario.
+  </div>
+
+  <div class="card" id="impresionCard" style="display:none;">
+    <h1>📋 Inventario Disponible</h1>
+    <div id="fechaImpresion" style="font-size:13px;color:#667;margin-bottom:10px;"></div>
+    <table>
+      <thead>
+        <tr><th>Código</th><th>Nombre</th><th>Categoría</th><th>Descripción</th><th>Cantidad</th><th>Ubicación</th></tr>
+      </thead>
+      <tbody id="cuerpoTablaImpresion"></tbody>
+    </table>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-save no-print" style="flex:2;" onclick="window.print()">🖨️ Guardar como PDF / Imprimir</button>
+      <button class="btn-cancel no-print" style="flex:1;" onclick="limpiarPantalla()">✖ Ocultar</button>
+    </div>
+  </div>
+
+<script>
+  // ======================================================================
+  // >>> REEMPLAZA ESTA LÍNEA con la URL de tu Apps Script (la que termina
+  //     en /exec). La obtienes en Implementar > Gestionar implementaciones.
+  // ======================================================================
+  var APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzUNWFwoqqZChZ8wIhatwwQSDGOw93WbShd22GXAfh4gcvd7XNTFUZEsjB30UIO-AF5/exec";
+
+  var html5QrCode = null;
+  var camaraActiva = false;
+  var jsonpCounter = 0;
+  var tipoPorFila = {};
+
+  /** Llama a la API de Apps Script usando JSONP (evita problemas de CORS). */
+  function llamarAPI(params, onSuccess, onError) {
+    var cbName = 'jsonpCb' + (jsonpCounter++);
+    window[cbName] = function(data) {
+      delete window[cbName];
+      document.body.removeChild(script);
+      onSuccess(data);
+    };
+    var query = 'callback=' + cbName;
+    for (var k in params) {
+      query += '&' + k + '=' + encodeURIComponent(params[k]);
+    }
+    var script = document.createElement('script');
+    script.src = APPS_SCRIPT_URL + '?' + query;
+    script.onerror = function() {
+      delete window[cbName];
+      if (onError) onError({ message: 'No se pudo conectar con Apps Script' });
+    };
+    document.body.appendChild(script);
+  }
+
+  var input = document.getElementById('codigoInput');
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); buscar(); }
+  });
+
+  /** Oculta y limpia todas las secciones (búsqueda, creación, impresión). */
+  function limpiarPantalla() {
+    document.getElementById('resultadosContainer').innerHTML = '';
+    document.getElementById('noEncontrado').style.display = 'none';
+    document.getElementById('formularioNuevo').style.display = 'none';
+    document.getElementById('impresionCard').style.display = 'none';
+    document.getElementById('estadoCarga').innerText = '';
+    ['n_codigo','n_nombre','n_categoria','n_descripcion','n_cantidad','n_puntoReorden','n_precio','n_ubicacion','n_proveedor']
+      .forEach(function(id) { document.getElementById(id).value = ''; });
+    tipoPorFila = {};
+  }
+
+  function buscar() {
+    var codigo = input.value.trim();
+    if (!codigo) return;
+    document.getElementById('formularioNuevo').style.display = 'none';
+    document.getElementById('impresionCard').style.display = 'none';
+    document.getElementById('resultadosContainer').innerHTML = '';
+    document.getElementById('noEncontrado').style.display = 'none';
+    document.getElementById('estadoCarga').innerText = 'Buscando...';
+    llamarAPI({ action: 'lookup', codigo: codigo }, mostrarResultado, mostrarError);
+  }
+
+  function mostrarResultado(data) {
+    document.getElementById('estadoCarga').innerText = '';
+    var contenedor = document.getElementById('resultadosContainer');
+    contenedor.innerHTML = '';
+
+    if (!data.encontrado) {
+      document.getElementById('noEncontrado').style.display = 'block';
+      return;
+    }
+    document.getElementById('noEncontrado').style.display = 'none';
+
+    var card = document.createElement('div');
+    card.className = 'card';
+
+    var titulo = document.createElement('h1');
+    titulo.textContent = data.items.length > 1
+      ? '📦 ' + data.items.length + ' coincidencias encontradas'
+      : '📦 Producto encontrado';
+    card.appendChild(titulo);
+
+    data.items.forEach(function(item) {
+      card.appendChild(construirItemCard(item));
+    });
+
+    contenedor.appendChild(card);
+  }
+
+  function construirItemCard(item) {
+    var div = document.createElement('div');
+    div.className = 'item-card';
+    tipoPorFila[item.fila] = null;
+
+    div.innerHTML =
+      '<div class="badge">📍 ' + (item.ubicacion || 'Sin ubicación') + '</div>' +
+      fila('Nombre', item.nombre) +
+      fila('Categoría', item.categoria) +
+      fila('Descripción', item.descripcion) +
+      fila('Cantidad disponible', item.cantidad) +
+      '<div class="row"><span>Estado</span><span class="' + (item.estado === 'OK' ? 'estado-OK' : 'estado-BAJO') + '">' + item.estado + '</span></div>' +
+      fila('Precio', item.precio) +
+      fila('Proveedor', item.proveedor) +
+      fila('Última actualización', item.fecha) +
+      '<label style="margin-top:14px;">Registrar movimiento</label>' +
+      '<div style="display:flex; gap:8px; margin-top:6px;">' +
+        '<button type="button" id="btnEntrada_' + item.fila + '" class="btn-toggle" onclick="seleccionarTipo(' + item.fila + ',\'Entradas\')">⬇️ Entrada</button>' +
+        '<button type="button" id="btnSalida_' + item.fila + '" class="btn-toggle" onclick="seleccionarTipo(' + item.fila + ',\'Salidas\')">⬆️ Salida</button>' +
+      '</div>' +
+      '<input type="number" id="cantidadMov_' + item.fila + '" min="1" placeholder="Cantidad" style="margin-top:8px;">' +
+      '<button class="btn-save" onclick="guardarMovimiento(' + item.fila + ', \'' + item.codigo + '\')">💾 Guardar movimiento</button>';
+
+    return div;
+  }
+
+  function fila(etiqueta, valor) {
+    return '<div class="row"><span>' + etiqueta + '</span><span>' + (valor === undefined || valor === null ? '' : valor) + '</span></div>';
+  }
+
+  function mostrarError(err) {
+    document.getElementById('estadoCarga').innerText = 'Error: ' + err.message;
+  }
+
+  function seleccionarTipo(fila, tipo) {
+    tipoPorFila[fila] = tipo;
+    document.getElementById('btnEntrada_' + fila).classList.toggle('activo', tipo === 'Entradas');
+    document.getElementById('btnSalida_' + fila).classList.toggle('activo', tipo === 'Salidas');
+  }
+
+  function guardarMovimiento(fila, codigo) {
+    var tipo = tipoPorFila[fila];
+    if (!tipo) {
+      document.getElementById('estadoCarga').innerText = 'Selecciona Entrada o Salida';
+      return;
+    }
+    var cantidad = document.getElementById('cantidadMov_' + fila).value;
+    if (!cantidad || Number(cantidad) <= 0) {
+      document.getElementById('estadoCarga').innerText = 'Ingresa una cantidad válida';
+      return;
+    }
+    document.getElementById('estadoCarga').innerText = 'Guardando...';
+    llamarAPI(
+      { action: 'movimiento', fila: fila, tipo: tipo, cantidad: cantidad },
+      function(res) {
+        if (res.ok) {
+          document.getElementById('estadoCarga').innerText = 'Movimiento guardado ✔';
+          input.value = codigo;
+          buscar();
+        } else {
+          document.getElementById('estadoCarga').innerText = 'Error: ' + res.error;
+        }
+      },
+      mostrarError
+    );
+  }
+
+  function toggleFormularioNuevo() {
+    var card = document.getElementById('formularioNuevo');
+    var mostrar = card.style.display === 'none';
+    document.getElementById('resultadosContainer').innerHTML = '';
+    document.getElementById('noEncontrado').style.display = 'none';
+    document.getElementById('impresionCard').style.display = 'none';
+    card.style.display = mostrar ? 'block' : 'none';
+    if (mostrar) card.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function guardarNuevoItem() {
+    var codigo = document.getElementById('n_codigo').value.trim();
+    if (!codigo) {
+      document.getElementById('estadoCarga').innerText = 'El código es obligatorio';
+      return;
+    }
+    var datos = {
+      action: 'crear',
+      codigo: codigo,
+      nombre: document.getElementById('n_nombre').value.trim(),
+      categoria: document.getElementById('n_categoria').value.trim(),
+      descripcion: document.getElementById('n_descripcion').value.trim(),
+      cantidad: document.getElementById('n_cantidad').value || 0,
+      puntoReorden: document.getElementById('n_puntoReorden').value || 0,
+      precio: document.getElementById('n_precio').value || 0,
+      ubicacion: document.getElementById('n_ubicacion').value.trim(),
+      proveedor: document.getElementById('n_proveedor').value.trim()
+    };
+    document.getElementById('estadoCarga').innerText = 'Guardando producto...';
+    llamarAPI(datos, function(res) {
+      if (res.ok) {
+        document.getElementById('estadoCarga').innerText = 'Producto creado ✔';
+        limpiarPantalla();
+      } else {
+        document.getElementById('estadoCarga').innerText = 'Error: ' + res.error;
+      }
+    }, mostrarError);
+  }
+
+  function imprimirInventario() {
+    document.getElementById('resultadosContainer').innerHTML = '';
+    document.getElementById('noEncontrado').style.display = 'none';
+    document.getElementById('formularioNuevo').style.display = 'none';
+    document.getElementById('estadoCarga').innerText = 'Generando inventario...';
+    llamarAPI({ action: 'imprimir' }, mostrarInventarioImprimir, mostrarError);
+  }
+
+  function mostrarInventarioImprimir(items) {
+    document.getElementById('estadoCarga').innerText = '';
+    var tbody = document.getElementById('cuerpoTablaImpresion');
+    tbody.innerHTML = '';
+    items.forEach(function(it) {
+      var tr = document.createElement('tr');
+      ['codigo','nombre','categoria','descripcion','cantidad','ubicacion'].forEach(function(campo) {
+        var td = document.createElement('td');
+        td.textContent = it[campo];
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    document.getElementById('fechaImpresion').innerText = 'Fecha del reporte: ' + new Date().toLocaleString();
+    document.getElementById('impresionCard').style.display = 'block';
+    document.getElementById('impresionCard').scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function toggleCamara() {
+    if (!camaraActiva) {
+      html5QrCode = new Html5Qrcode("reader");
+      var formatosBarras = [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.ITF,
+        Html5QrcodeSupportedFormats.CODABAR
+      ];
+      html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 260, height: 140 }, formatsToSupport: formatosBarras },
+        function(decodedText) {
+          input.value = decodedText;
+          buscar();
+          detenerCamara();
+        }
+      ).then(function() {
+        camaraActiva = true;
+        document.getElementById('btnCamara').innerText = '✖ Cerrar cámara';
+      }).catch(function(err) {
+        document.getElementById('estadoCarga').innerText = 'No se pudo abrir la cámara: ' + err;
+      });
+    } else {
+      detenerCamara();
+    }
+  }
+
+  function detenerCamara() {
+    if (html5QrCode) {
+      html5QrCode.stop().then(function() {
+        html5QrCode.clear();
+        camaraActiva = false;
+        document.getElementById('btnCamara').innerText = '📷 Escanear código de barras';
+      });
+    }
+  }
+</script>
+</body>
+</html>
